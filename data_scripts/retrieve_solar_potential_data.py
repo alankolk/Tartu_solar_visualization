@@ -1,13 +1,6 @@
 import json
 import csv
 import pandas as pd
-# "city-attributes.json" has all the roof polygons energy generations
-
-#Read csv
-#Take etak id
-#Find roof data from city-attributes.json
-#collect relevant power data from the attributes
-#Write the data to the csv file
 
 def describe_yearly_kwh():
     roof_attr_data = open("data/city-attributes.json")
@@ -15,7 +8,7 @@ def describe_yearly_kwh():
 
     all_yearly_kwh = []
     for element in roof_data:
-        try: #Atleast one building exists in the KML visual export that is not present in the cityGML file that was created by the estonian landboard, so this try block goes past this anomaly
+        try: #Atleast one building exists in the KML visual export that is not present in the cityGML file that was created by the estonian landboard, so this try block goes past this
             polygons_from_roof_data = roof_data[element]["roofs"]
         except:
             continue
@@ -24,7 +17,7 @@ def describe_yearly_kwh():
             all_yearly_kwh.append(roof_polygon["yearly_kwh"])
     
     df = pd.DataFrame(all_yearly_kwh)
-    print(df.describe(percentiles=[.25,.5,.75,.95,.99]).apply(lambda s: s.apply('{0:.5f}'.format)))
+    print(df.describe(percentiles=[.01,.05,.10,.25,.35,.5,.65,.75,.85,.95,.99,.999]).apply(lambda s: s.apply('{0:.5f}'.format)))
     roof_attr_data.close()
 
 def generate_csv():
@@ -49,33 +42,35 @@ def generate_csv():
                     line_count += 1
                 else:#Process row
                     element_id = row[0][5:row[0].index("_", 5)]
-                    try: #Atleast one building exists in the KML visual export that is not present in the cityGML file that was created by the estonian landboard, so this try block goes past this anomaly
+                    try: #Atleast one building exists in the KML visual export that is not present in the cityGML file that was created by the estonian landboard, so this try block goes past this
                         polygons_from_roof_data = roof_data[element_id]["roofs"]
+                        
+                        area = 0.0
+                        yearly_kwh = 0.0
+                        monthly_average_kwh = 0.0
+                        monthly_kwh = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
+                        
+                        for roof_polygon in polygons_from_roof_data:
+                            yearly_kwh_data = roof_polygon["yearly_kwh"]
+                            yearly_kwh += yearly_kwh_data
+                            all_yearly_kwh.append(yearly_kwh_data)
+                            area += roof_polygon["area"]
+                            monthly_average_kwh += roof_polygon["monthly_average_kwh"]
+                            for index, month in enumerate(roof_polygon["monthly_kwh"]):
+                                monthly_kwh[index] += month
+                        
+                        for index, month in enumerate(monthly_kwh):
+                            monthly_kwh[index] = round(month, 2)
+
+                        row[0] = row[0] + "_RoofSurface"
+                        new_row = row + [round(area, 2), round(yearly_kwh, 2), round(monthly_average_kwh, 2), str(monthly_kwh)]
+                        writer.writerow(new_row)
                     except:
-                        continue
-                    area = 0.0
-                    yearly_kwh = 0.0
-                    monthly_average_kwh = 0.0
-                    monthly_kwh = []
+                        row[0] = row[0] + "_RoofSurface"
+                        new_row = row + [round(area, 2), round(yearly_kwh, 2), round(monthly_average_kwh, 2), str(monthly_kwh)]
+                        writer.writerow(new_row)
 
-                    for roof_polygon in polygons_from_roof_data:
-                        roof_coords = roof_polygon["points_epsg_3301"]
-                        yearly_kwh_data = roof_polygon["yearly_kwh"]
-                        yearly_kwh += yearly_kwh_data
-                        all_yearly_kwh.append(yearly_kwh_data)
-                        area += roof_polygon["area"]
-                        monthly_average_kwh += roof_polygon["monthly_average_kwh"]
-                        monthly_kwh = roof_polygon["monthly_kwh"]
-                    #print(area)
-                    #print(yearly_kwh)
-                    #print(monthly_average_kwh)
-                    #print(monthly_kwh)
-                    #print(all_yearly_kwh)
-                    row[0] = row[0] + "_RoofSurface"
-
-                    new_row = row + [round(area, 2), round(yearly_kwh, 2), round(monthly_average_kwh, 2), str(monthly_kwh)]
-                    writer.writerow(new_row)
-
-describe_yearly_kwh()
+#describe_yearly_kwh()
+#generate_csv()
     
 

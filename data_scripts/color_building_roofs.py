@@ -9,6 +9,8 @@ from pyproj import Transformer
 
 import json
 
+#Reads the metadata JSON file, which contains info on what tile each building is
+
 def read_tile_json(filepath):
     f = open(filepath)
     data = json.load(f)
@@ -24,6 +26,8 @@ def read_tile_json(filepath):
     f.close()
     return tile_list
 
+#Transforms the roof coordinates from city-attributes.json to WGS:84
+
 def transform_roof_coordinates(coordinates, transformer):
 
     coordinate_list = []
@@ -34,6 +38,55 @@ def transform_roof_coordinates(coordinates, transformer):
         coordinate_list.append([round(transformed[1], 7), round(transformed[0], 7), round(coord[2], 2)])
     
     return coordinate_list
+
+#Function to pick a colour based on the solar potential
+
+def pick_colour(kwh):
+    colour = "FFFFFFFF"
+    if kwh < 450:
+        colour = "#FF18FF00"
+    elif kwh >= 450 and kwh < 680:
+        colour = "FF00FA57"
+    elif kwh >= 680 and kwh < 1000:
+        colour = "FF00F38B"
+    elif kwh >= 1000 and kwh < 2100:
+        colour = "FF00EABC"
+    elif kwh >= 2100 and kwh < 3000:
+        colour = "FF00E0EB"
+    elif kwh >= 3000 and kwh < 4800:
+        colour = "FF00D5FF"
+    elif kwh >= 4800 and kwh < 7100:
+        colour = "FF00C9FF"
+    elif kwh >= 7100 and kwh < 9800:
+        colour = "FF00BBFF"
+    elif kwh >= 9800 and kwh < 14500:
+        colour = "FF00AAFF"
+    elif kwh >= 14500 and kwh < 37200:
+        colour = "FF0095FF"
+    elif kwh >= 37200 and kwh < 124600:
+        colour = "FF007BFF"
+    elif kwh >= 124600 and kwh < 366000:
+        colour = "FF0056FF"
+    elif kwh >= 366000:
+        colour = "FF9600FF"
+    return colour
+
+#Function to create a placemark with a polygon coloured a specific colour
+
+def create_placemark(name, colour, polygon):
+    pm = KML.Placemark(
+        KML.name(name),
+        KML.Style(
+            KML.PolyStyle(
+                KML.color(colour)
+            )
+        ),
+        polygon,
+        id = name
+    )
+    return pm
+
+# Main function that takes the KML visualization export, tile list and city-attributes.json from the pipeline
 
 def modify_buildings_in_tiles(filepath, tiles, roof_attr_path):
     
@@ -59,14 +112,12 @@ def modify_buildings_in_tiles(filepath, tiles, roof_attr_path):
                 element_name = element.name.text
                 element_id = element_name[5:element_name.index("_", 5)] #Only extract etak id number from the name, format is "etak_######_..."
 
-                try: #Atleast one building exists in the KML visual export that is not present in the cityGML file that was created by the estonian landboard, so this try block goes past this anomaly
+                try: #Atleast one building exists in the KML visual export that is not present in the cityGML file that was created by the estonian landboard, so this try block goes past this and leaves the building untouched
                     polygons_from_roof_data = roof_data[element_id]["roofs"]
                 except:
                     continue
 
                 for poly in tuple[1]:
-                    #TODO Create colour based on the potential of the side
-                    #For this find the range of the yearly_kwh and then map colours based on the values
 
                     coords = []
                     for coord in poly.outerBoundaryIs.LinearRing.coordinates.text.split(" "):
@@ -81,43 +132,24 @@ def modify_buildings_in_tiles(filepath, tiles, roof_attr_path):
                             coords.append(float_coord)
                     
                     roof_coords = []
-                    roof_orientation = ""
-                    roof_potential = ""
+
+                    roof_potential = 0
 
                     for roof_polygon in polygons_from_roof_data:
                         roof_coords = transform_roof_coordinates(roof_polygon["points_epsg_3301"], transformer)
 
-                        if (coords[0] in roof_coords and coords[1] in roof_coords and coords[2] in roof_coords): #We have a match with the coords from the kml polygon and the city-attributes roof coordinates
-                            #IF MATCH, then we want the potential yearly_kwh data and the orientatation?
-                            #roof_potential = roof_polygon["yearly_kwh"]
-                            roof_orientation = roof_polygon["orientation"]
+                        if (coords[0] in roof_coords and coords[1] in roof_coords and coords[2] in roof_coords): #WMatch the coords from the kml polygon and the city-attributes roof coordinates
+                            #IF MATCH, then we want to find the potential yearly_kwh data
+                            roof_potential = roof_polygon["yearly_kwh"]
 
-                    colour = "FF000000" #Default must
+                    colour = "FFFFFFFF" #Default white
+   
+                    if roof_potential != 0:
+                        colour = pick_colour(roof_potential)
 
-                    match roof_orientation:
-                        case "none":
-                            colour = "FF5A32EB" #Lillakassinine
-                        case "south":
-                            colour = "FFFFB140" #Oranz
-                        case "east":
-                            colour = "FFBB2B60" #Roosakaspunane
-                        case "west":
-                            colour = "FF679C34" #Roheline
-                        case "north":
-                            colour = "FF55D3FC" #Helesinine
+                    pm = create_placemark(element_name, colour, poly)
                             
-                    pm = KML.Placemark(
-                        KML.name(element.name.text),
-                        KML.Style(
-                            KML.PolyStyle(
-                                KML.color(colour)
-                            )
-                        ),
-                        poly,
-                        id = element.name.text
-                    )
-
-                    doc.getroot().Document.append(pm)
+                    doc.getroot().Document.append(pm) # Add new single polygon placemark
 
                 doc.getroot().Document.remove(element) #Remove the original roofsurface placemark
     
